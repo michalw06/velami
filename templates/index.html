@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <title>VelaMi – Smart Travel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; background-color: #0f172a; color: #f8fafc; }
+        .tab-active { color: #38bdf8; border-top: 2px solid #38bdf8; }
+    </style>
+<link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }</script>
+</head>
+<body class="pb-24 font-sans">
+
+    <header class="sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center font-bold text-slate-950">V</div>
+            <span class="font-bold text-lg tracking-wide">Vela<span class="text-sky-400">Mi</span></span>
+        </div>
+        <span id="header-trip-badge" class="text-xs bg-slate-800 text-sky-400 px-2.5 py-1 rounded-full border border-slate-700">Brak celu</span>
+    </header>
+
+    <main id="view-bag" class="p-4 space-y-5">
+        <div class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/70 space-y-3">
+            <h2 class="font-semibold text-base text-sky-400">1. Parametry podróży</h2>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-slate-400">Kierunek (Miasto)</label>
+                    <input id="input-city" type="text" placeholder="np. Tirana" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-sky-400">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Liczba dni</label>
+                    <input id="input-days" type="number" min="1" max="30" value="4" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-sky-400">
+                </div>
+            </div>
+            <div>
+                <label class="text-xs text-slate-400">Limit bagażu (Linia lotnicza)</label>
+                <select id="input-airline" onchange="updateBagLimit()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm">
+                    <option value="20">Ryanair Mały (40x20x25 cm – ok. 20L)</option>
+                    <option value="24">WizzAir Mały (40x30x20 cm – ok. 24L)</option>
+                    <option value="44">Kabina Priority (55x40x20 cm – ok. 44L)</option>
+                </select>
+            </div>
+            <button onclick="saveTripSettings()" class="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold py-2.5 rounded-xl text-sm transition">
+                Zapisz i aktualizuj planer
+            </button>
+        </div>
+
+        <div class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/70">
+            <div class="flex justify-between text-xs mb-1.5">
+                <span class="text-slate-300">Zajętość plecaka:</span>
+                <span id="bag-stats" class="font-semibold text-sky-400">0 / 20 L</span>
+            </div>
+            <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden">
+                <div id="bag-progress" class="bg-sky-400 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/70 space-y-3">
+            <div class="flex justify-between items-center">
+                <h2 class="font-semibold text-base">Checklista pakowania</h2>
+                <button onclick="addCustomBagItem()" class="text-xs bg-slate-700 px-2.5 py-1 rounded-lg text-sky-300">+ Własna rzecz</button>
+            </div>
+            <div id="checklist-container" class="space-y-2"></div>
+        </div>
+    </main>
+
+    <main id="view-planner" class="p-4 space-y-5 hidden">
+        <div class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/70 space-y-3">
+            <h2 class="font-semibold text-base text-sky-400">Odkryj miejsca w celu podróży</h2>
+            <div class="flex gap-2">
+                <input id="search-city-input" type="text" placeholder="Wpisz miasto..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm">
+                <button onclick="discoverPlaces()" id="btn-discover" class="bg-sky-500 text-slate-950 font-semibold px-4 py-2 rounded-xl text-sm">Szukaj</button>
+            </div>
+            <div id="discovered-list" class="space-y-2 max-h-64 overflow-y-auto"></div>
+        </div>
+
+        <div class="space-y-3">
+            <div class="flex justify-between items-center">
+                <h2 class="font-semibold text-base">Twój Plan (Edytowalny)</h2>
+                <button onclick="addDay()" class="text-xs bg-sky-500/20 text-sky-400 border border-sky-500/40 px-3 py-1.5 rounded-xl font-medium">+ Dodaj dzień</button>
+            </div>
+            <div id="days-container" class="space-y-4"></div>
+        </div>
+    </main>
+
+    <main id="view-gear" class="p-4 space-y-4 hidden">
+        <div class="bg-gradient-to-br from-slate-800 to-slate-900 p-5 rounded-2xl border border-slate-700 space-y-3">
+            <span class="text-xs uppercase tracking-wider text-sky-400 font-bold">VelaMi Gear • Wkrótce</span>
+            <h2 class="text-xl font-bold">Podróżuj lekko. Bez dopłat na lotnisku.</h2>
+            <p class="text-sm text-slate-300 leading-relaxed">
+                Projektujemy własną linię organizerów kompresyjnych i plecaków kabinowych idealnie dopasowanych do wymiarów Ryanair i WizzAir (40x20x25 cm).
+            </p>
+            <div class="pt-2">
+                <input type="email" placeholder="Twój e-mail na listę VIP (-20%)" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm mb-2">
+                <button onclick="alert('Zapisano na listę VIP VelaMi Gear!')" class="w-full bg-sky-500 text-slate-950 font-semibold py-2.5 rounded-xl text-sm">Powiadom mnie o dropie</button>
+            </div>
+        </div>
+    </main>
+
+    <nav class="fixed bottom-0 inset-x-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 grid grid-cols-3 text-xs text-slate-400 z-30">
+        <button onclick="switchTab('bag')" id="tab-bag" class="py-3 flex flex-col items-center gap-1 tab-active">
+            <span>🎒</span><span>Bagaż</span>
+        </button>
+        <button onclick="switchTab('planner')" id="tab-planner" class="py-3 flex flex-col items-center gap-1">
+            <span>🗺️</span><span>Planer</span>
+        </button>
+        <button onclick="switchTab('gear')" id="tab-gear" class="py-3 flex flex-col items-center gap-1">
+            <span>⚡</span><span>VelaMi Gear</span>
+        </button>
+    </nav>
+
+    <script>
+        let state = JSON.parse(localStorage.getItem('velami_state')) || {
+            city: '',
+            daysCount: 4,
+            bagLimit: 20,
+            checklist: [
+                { id: 1, name: 'Dowód osobisty / Paszport', vol: 0.2, checked: true },
+                { id: 2, name: 'Ładowarka + Powerbank', vol: 1.0, checked: false },
+                { id: 3, name: 'Koszulki (x4)', vol: 3.5, checked: false },
+                { id: 4, name: 'Bielizna i skarpety', vol: 2.0, checked: false },
+                { id: 5, name: 'Kosmetyczka 100ml (płyny)', vol: 1.5, checked: false },
+                { id: 6, name: 'Bluza / lekka kurtka', vol: 4.5, checked: false }
+            ],
+            itinerary: {
+                1: [{ id: 101, time: '10:00', title: 'Przylot i dojazd do centrum', note: 'Sprawdź lokalny autobus z lotniska' }],
+                2: []
+            }
+        };
+
+        function saveState() {
+            localStorage.setItem('velami_state', JSON.stringify(state));
+        }
+
+        function switchTab(tab) {
+            ['bag', 'planner', 'gear'].forEach(t => {
+                document.getElementById('view-' + t).classList.add('hidden');
+                document.getElementById('tab-' + t).classList.remove('tab-active');
+            });
+            document.getElementById('view-' + tab).classList.remove('hidden');
+            document.getElementById('tab-' + tab).classList.add('tab-active');
+        }
+
+        function saveTripSettings() {
+            state.city = document.getElementById('input-city').value.trim();
+            state.daysCount = parseInt(document.getElementById('input-days').value) || 3;
+            state.bagLimit = parseInt(document.getElementById('input-airline').value) || 20;
+            
+            for (let d = 1; d <= state.daysCount; d++) {
+                if (!state.itinerary[d]) state.itinerary[d] = [];
+            }
+            if (state.city) {
+                document.getElementById('header-trip-badge').innerText = `${state.city} (${state.daysCount} dni)`;
+                document.getElementById('search-city-input').value = state.city;
+            }
+            saveState();
+            renderChecklist();
+            renderPlanner();
+        }
+
+        function updateBagLimit() {
+            state.bagLimit = parseInt(document.getElementById('input-airline').value) || 20;
+            saveState();
+            renderChecklist();
+        }
+
+        function renderChecklist() {
+            const container = document.getElementById('checklist-container');
+            container.innerHTML = '';
+            let usedVol = 0;
+
+            state.checklist.forEach(item => {
+                if (item.checked) usedVol += item.vol;
+                container.innerHTML += `
+                    <div class="flex items-center justify-between bg-slate-900/80 px-3 py-2.5 rounded-xl border border-slate-800">
+                        <label class="flex items-center gap-3 flex-1 cursor-pointer">
+                            <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="toggleCheck(${item.id})" class="w-4 h-4 accent-sky-400 rounded">
+                            <span class="text-sm ${item.checked ? 'line-through text-slate-500' : 'text-slate-200'}">${item.name}</span>
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-500">${item.vol}L</span>
+                            <button onclick="removeCheckItem(${item.id})" class="text-slate-600 hover:text-red-400 text-xs px-1">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            const pct = Math.min(100, Math.round((usedVol / state.bagLimit) * 100));
+            document.getElementById('bag-stats').innerText = `${usedVol.toFixed(1)} / ${state.bagLimit} L (${pct}%)`;
+            const bar = document.getElementById('bag-progress');
+            bar.style.width = pct + '%';
+            bar.className = `h-full transition-all duration-300 ${usedVol > state.bagLimit ? 'bg-red-500' : 'bg-sky-400'}`;
+        }
+
+        function toggleCheck(id) {
+            const item = state.checklist.find(i => i.id === id);
+            if (item) item.checked = !item.checked;
+            saveState();
+            renderChecklist();
+        }
+
+        function removeCheckItem(id) {
+            state.checklist = state.checklist.filter(i => i.id !== id);
+            saveState();
+            renderChecklist();
+        }
+
+        function addCustomBagItem() {
+            const name = prompt("Nazwa rzeczy do spakowania:");
+            if (!name) return;
+            const vol = parseFloat(prompt("Szacowana objętość w litrach (np. 1.5):", "1.0")) || 1.0;
+            state.checklist.push({ id: Date.now(), name, vol, checked: false });
+            saveState();
+            renderChecklist();
+        }
+
+        async function discoverPlaces() {
+            const city = document.getElementById('search-city-input').value.trim();
+            if (!city) return alert("Wpisz nazwę miasta!");
+            const btn = document.getElementById('btn-discover');
+            const list = document.getElementById('discovered-list');
+            btn.innerText = "...";
+            list.innerHTML = '<p class="text-xs text-slate-400 py-2">Szukam najlepszych miejsc...</p>';
+
+            try {
+                const res = await fetch('/api/discover', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ city, days: state.daysCount })
+                });
+                const data = await res.json();
+                list.innerHTML = '';
+                (data.places || []).forEach(p => {
+                    const safeTitle = p.title.replace(/'/g, "\\'");
+                    const safeTip = p.tip.replace(/'/g, "\\'");
+                    list.innerHTML += `
+                        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700/80 flex justify-between items-start gap-2">
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded">${p.category}</span>
+                                    <span class="text-xs text-emerald-400">${p.cost}</span>
+                                </div>
+                                <h4 class="font-medium text-sm mt-1">${p.title}</h4>
+                                <p class="text-xs text-slate-400 mt-0.5">${p.tip}</p>
+                            </div>
+                            <button onclick="addPlaceToDay('${safeTitle}', '${safeTip}')" class="bg-sky-500 text-slate-950 text-xs font-bold px-2.5 py-1.5 rounded-lg shrink-0">+ Dodaj</button>
+                        </div>
+                    `;
+                });
+            } catch (e) {
+                list.innerHTML = '<p class="text-xs text-red-400">Błąd połączenia z serwerem.</p>';
+            } finally {
+                btn.innerText = "Szukaj";
+            }
+        }
+
+        function addPlaceToDay(title, note) {
+            const dayNum = prompt(`Do którego dnia dodać "${title}"? (wpisz numer dnia, np. 1):`, "1");
+            const d = parseInt(dayNum);
+            if (!d || d < 1) return;
+            if (!state.itinerary[d]) state.itinerary[d] = [];
+            state.itinerary[d].push({
+                id: Date.now(),
+                time: '12:00',
+                title: title,
+                note: note
+            });
+            saveState();
+            renderPlanner();
+        }
+
+        function renderPlanner() {
+            const container = document.getElementById('days-container');
+            container.innerHTML = '';
+            Object.keys(state.itinerary).sort((a,b) => a - b).forEach(day => {
+                const items = state.itinerary[day];
+                let itemsHtml = items.map(item => `
+                    <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+                        <div class="flex justify-between items-center gap-2">
+                            <input type="time" value="${item.time}" onchange="editPlanItem(${day}, ${item.id}, 'time', this.value)" class="bg-slate-800 text-sky-400 text-xs px-2 py-1 rounded border border-slate-700">
+                            <input type="text" value="${item.title}" onchange="editPlanItem(${day}, ${item.id}, 'title', this.value)" class="flex-1 bg-transparent text-sm font-medium focus:outline-none focus:border-b border-sky-400">
+                            <button onclick="deletePlanItem(${day}, ${item.id})" class="text-slate-500 hover:text-red-400 text-xs px-1">✕</button>
+                        </div>
+                        <input type="text" value="${item.note}" placeholder="Dodaj własną notatkę..." onchange="editPlanItem(${day}, ${item.id}, 'note', this.value)" class="w-full bg-transparent text-xs text-slate-400 focus:outline-none">
+                    </div>
+                `).join('');
+
+                container.innerHTML += `
+                    <div class="bg-slate-800/50 p-3.5 rounded-2xl border border-slate-700/70 space-y-2.5">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-sm text-sky-300">Dzień ${day}</h3>
+                            <button onclick="addCustomPlanItem(${day})" class="text-xs text-slate-300 bg-slate-700/80 px-2.5 py-1 rounded-lg">+ Punkt ręcznie</button>
+                        </div>
+                        <div class="space-y-2">${itemsHtml || '<p class="text-xs text-slate-500">Brak punktów. Dodaj z wyszukiwarki lub ręcznie.</p>'}</div>
+                    </div>
+                `;
+            });
+        }
+
+        function addDay() {
+            const nextDay = Object.keys(state.itinerary).length + 1;
+            state.itinerary[nextDay] = [];
+            saveState();
+            renderPlanner();
+        }
+
+        function addCustomPlanItem(day) {
+            const title = prompt("Co planujesz? (np. Zwiedzanie zamku / Obiad):");
+            if (!title) return;
+            state.itinerary[day].push({ id: Date.now(), time: '14:00', title, note: '' });
+            saveState();
+            renderPlanner();
+        }
+
+        function editPlanItem(day, id, field, value) {
+            const item = state.itinerary[day].find(i => i.id === id);
+            if (item) item[field] = value;
+            saveState();
+        }
+
+        function deletePlanItem(day, id) {
+            state.itinerary[day] = state.itinerary[day].filter(i => i.id !== id);
+            saveState();
+            renderPlanner();
+        }
+
+        document.getElementById('input-city').value = state.city;
+        document.getElementById('input-days').value = state.daysCount;
+        document.getElementById('input-airline').value = state.bagLimit;
+        if (state.city) {
+            document.getElementById('header-trip-badge').innerText = `${state.city} (${state.daysCount} dni)`;
+            document.getElementById('search-city-input').value = state.city;
+        }
+        renderChecklist();
+        renderPlanner();
+    </script>
+</body>
+</html>
